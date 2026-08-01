@@ -3,7 +3,19 @@
 **Full IDE support for Flaxon - the async-first Python backend framework.**
 
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aldanedev-create/Flaxon-Backend-Framework/main/assets/flaxon.png" alt="flaxon Logo"
+   width="200"/>
+</p>
 
+
+  
+  <p align="center">
+  <a href="https://pypi.org/project/flaxon/"><img src="https://img.shields.io/pypi/v/flaxon.svg" alt="PyPI version"></a>
+  <a href="https://github.com/aldanedev-create/Flaxon-Backend-Framework/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/code%20style-ruff-000000.svg" alt="Code style: ruff"></a>
+</p>
+ 
 
 [![Version](https://img.shields.io/visual-studio-marketplace/v/flaxon.flaxon-vscode)](https://marketplace.visualstudio.com/items?itemName=flaxon.flaxon-vscode)
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/flaxon.flaxon-vscode)](https://marketplace.visualstudio.com/items?itemName=flaxon.flaxon-vscode)
