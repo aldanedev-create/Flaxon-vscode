@@ -2,7 +2,7 @@
   "name": "flaxon-vscode",
   "displayName": "Flaxon",
   "description": "Full IDE support for Flaxon - the async-first Python backend framework",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Flaxon-vscode",
   "author": {
     "name": "Aldane Hutchinson",
@@ -273,8 +273,7 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "tsc -p ./ && cp -r server out/",    "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "test": "npm run compile && node ./out/test/runTest.js",
     "package": "vsce package",

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as child_process from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
 import { logger } from '../utils/logger';
 
 /**
@@ -11,8 +12,10 @@ export class ServerManager {
     private process: child_process.ChildProcess | null = null;
     private isServerRunning: boolean = false;
     private outputChannel: vscode.OutputChannel;
+    private restartAttempts: number = 0;
+    private readonly maxRestartAttempts: number = 3;
 
-    constructor() {
+    constructor(private context: vscode.ExtensionContext) {
         this.outputChannel = vscode.window.createOutputChannel('Flaxon Language Server');
     }
 
@@ -25,22 +28,32 @@ export class ServerManager {
         }
 
         try {
-            // Get Python path
+            // 1. Get Python path setting
             const pythonPath = vscode.workspace.getConfiguration('flaxon').get('pythonPath', 'python3');
 
-            // Build server command
-            // This would point to the actual Flaxon language server implementation
-            const serverScript = path.join(__dirname, '..', '..', 'server', 'flaxon_lsp.py');
-            const command = `${pythonPath} ${serverScript}`;
+            // 2. Resolve server script path safely using ExtensionContext
+            const serverScript = this.context.asAbsolutePath(path.join('server', 'flaxon_lsp.py'));
 
-            logger.info(`Starting language server: ${command}`);
+            // Verify the Python script actually exists before spawning
+            if (!fs.existsSync(serverScript)) {
+                const msg = `LSP server script not found at: ${serverScript}`;
+                this.outputChannel.appendLine(`[ERROR] ${msg}`);
+                logger.error(msg);
+                vscode.window.showErrorMessage(`Flaxon LSP Error: Server script missing from extension directory.`);
+                return;
+            }
 
-            // Spawn the server process
-            this.process = child_process.spawn(command, [], {
+            logger.info(`Starting language server with python: ${pythonPath}`);
+            this.outputChannel.appendLine(`Executing: ${pythonPath} "${serverScript}"`);
+
+            // 3. Spawn the server process
+            this.process = child_process.spawn(pythonPath, [serverScript], {
                 stdio: ['pipe', 'pipe', 'pipe'],
-                shell: true,
                 env: process.env
             });
+
+            // Mark running state as soon as process spawns successfully
+            this.isServerRunning = true;
 
             // Handle stdout
             this.process.stdout?.on('data', (data) => {
@@ -62,20 +75,32 @@ export class ServerManager {
                 this.process = null;
                 logger.info(`Language server exited with code ${code}`);
                 this.outputChannel.appendLine(`Server exited with code ${code}`);
-                
-                // Auto-restart if it crashed
-                if (code !== 0) {
-                    vscode.window.showWarningMessage('Flaxon Language Server crashed. Attempting to restart...');
-                    setTimeout(() => this.start(), 2000);
+
+                // Prevent infinite auto-restart loops if crash occurs repeatedly
+                if (code !== 0 && code !== null) {
+                    if (this.restartAttempts < this.maxRestartAttempts) {
+                        this.restartAttempts++;
+                        vscode.window.showWarningMessage(
+                            `Flaxon Language Server crashed (Attempt ${this.restartAttempts}/${this.maxRestartAttempts}). Restarting...`
+                        );
+                        setTimeout(() => this.start(), 3000);
+                    } else {
+                        vscode.window.showErrorMessage('Flaxon Language Server crashed repeatedly and was stopped.');
+                    }
                 }
             });
 
-            // Wait for server to be ready
-            await this.waitForReady(5000);
-            this.isServerRunning = true;
+            // Reset restart counter on successful startup timeout window
+            setTimeout(() => {
+                if (this.isServerRunning) {
+                    this.restartAttempts = 0;
+                }
+            }, 10000);
+
             this.outputChannel.appendLine('Language server started successfully');
 
         } catch (error) {
+            this.isServerRunning = false;
             logger.error(`Failed to start language server: ${error}`);
             throw error;
         }
@@ -85,20 +110,18 @@ export class ServerManager {
      * Stop the language server.
      */
     async stop(): Promise<void> {
-        if (!this.isServerRunning || !this.process) {
+        if (!this.process) {
+            this.isServerRunning = false;
             return;
         }
 
         try {
-            // Send SIGTERM
             this.process.kill('SIGTERM');
-            
-            // Wait for it to exit
+
             await new Promise((resolve) => {
-                setTimeout(resolve, 1000);
+                setTimeout(resolve, 500);
             });
 
-            // Force kill if it's still running
             if (this.process && !this.process.killed) {
                 this.process.kill('SIGKILL');
             }
@@ -118,27 +141,6 @@ export class ServerManager {
      */
     isRunning(): boolean {
         return this.isServerRunning && this.process !== null && !this.process.killed;
-    }
-
-    /**
-     * Wait for the server to be ready.
-     */
-    private waitForReady(timeout: number): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const startTime = Date.now();
-            const checkInterval = setInterval(() => {
-                if (this.isServerRunning) {
-                    clearInterval(checkInterval);
-                    resolve();
-                    return;
-                }
-
-                if (Date.now() - startTime > timeout) {
-                    clearInterval(checkInterval);
-                    reject(new Error('Language server startup timed out'));
-                }
-            }, 100);
-        });
     }
 
     /**

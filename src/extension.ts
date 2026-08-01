@@ -189,10 +189,10 @@ function registerProviders(context: vscode.ExtensionContext): void {
  */
 function startLanguageServer(context: vscode.ExtensionContext): void {
     try {
-        languageServer = new LanguageServer();
+        // ✅ Pass context to LanguageServer
+        languageServer = new LanguageServer(context);
         languageServer.start();
 
-        // Update status bar
         if (statusBarItem) {
             statusBarItem.text = '$(flame) Flaxon ✓';
             statusBarItem.tooltip = 'Flaxon Language Server: Running';
@@ -321,7 +321,10 @@ function openDocumentation(): void {
 /**
  * Command: Restart the language server.
  */
-async function restartLanguageServer(): Promise<void> {
+/**
+ * Command: Restart the language server.
+ */
+async function restartLanguageServer(context: vscode.ExtensionContext): Promise<void> {
     try {
         logger.info('Restarting language server...');
         
@@ -329,16 +332,13 @@ async function restartLanguageServer(): Promise<void> {
             await languageServer.restart();
             vscode.window.showInformationMessage('Flaxon Language Server restarted');
             
-            // Update status bar
             if (statusBarItem) {
                 statusBarItem.text = '$(flame) Flaxon ✓';
                 statusBarItem.tooltip = 'Flaxon Language Server: Running';
             }
-            
-            logger.info('Language server restarted successfully');
         } else {
-            // Create new server instance
-            languageServer = new LanguageServer();
+            // ✅ Now 'context' is accessible here
+            languageServer = new LanguageServer(context);
             await languageServer.start();
             vscode.window.showInformationMessage('Flaxon Language Server started');
         }

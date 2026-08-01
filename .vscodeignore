@@ -3,3 +3,5 @@ src/**
 tsconfig.json
 npm-debug.log
 node_modules/**
+!server/**
+!server/flaxon_lsp.py

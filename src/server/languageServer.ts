@@ -9,8 +9,8 @@ import { logger } from '../utils/logger';
 export class LanguageServer {
     private serverManager: ServerManager;
 
-    constructor() {
-        this.serverManager = new ServerManager();
+    constructor(context: vscode.ExtensionContext) {
+        this.serverManager = new ServerManager(context);
     }
 
     /**
