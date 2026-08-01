@@ -36,7 +36,7 @@
     "backend",
     "flaxon-framework"
   ],
-  "icon": "resources/icon.png",
+  "icon": "resources/flaxon.png",
   "galleryBanner": {
     "color": "#0f172a",
     "theme": "dark"
@@ -45,6 +45,7 @@
     "onLanguage:python",
     "workspaceContains:**/app.py",
     "workspaceContains:**/main.py",
+    "workspaceContains:**/run.py",
     "workspaceContains:**/flaxon.py"
   ],
   "main": "./out/extension.js",
