@@ -3,7 +3,7 @@
   "displayName": "Flaxon",
   "description": "Full IDE support for Flaxon - the async-first Python backend framework",
   "version": "0.1.0",
-  "publisher": "flaxon",
+  "publisher": "Flaxon-vscode",
   "author": {
     "name": "Aldane Hutchinson",
     "email": "aldanehutchinson5@gmail.com"
