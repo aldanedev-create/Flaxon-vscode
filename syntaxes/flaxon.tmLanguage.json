@@ -1,0 +1,112 @@
+{
+  "name": "Flaxon",
+  "scopeName": "source.python.flaxon",
+  "injectionSelector": "L:source.python",
+  "patterns": [
+    {
+      "include": "#flaxon-decorators"
+    },
+    {
+      "include": "#flaxon-schemas"
+    },
+    {
+      "include": "#flaxon-fields"
+    },
+    {
+      "include": "#flaxon-exceptions"
+    },
+    {
+      "include": "#flaxon-websocket"
+    },
+    {
+      "include": "#flaxon-request"
+    }
+  ],
+  "repository": {
+    "flaxon-decorators": {
+      "patterns": [
+        {
+          "name": "entity.name.function.decorator.flaxon",
+          "match": "@app\\.(get|post|put|delete|patch)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "keyword.control.flaxon"
+            }
+          }
+        },
+        {
+          "name": "entity.name.function.decorator.flaxon",
+          "match": "@app\\.(websocket)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "keyword.control.flaxon"
+            }
+          }
+        }
+      ]
+    },
+    "flaxon-schemas": {
+      "patterns": [
+        {
+          "name": "entity.name.type.class.flaxon",
+          "match": "class\\s+(\\w+)\\s*\\(\\s*Schema\\s*\\)",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.class.flaxon"
+            }
+          }
+        }
+      ]
+    },
+    "flaxon-fields": {
+      "patterns": [
+        {
+          "name": "support.function.flaxon",
+          "match": "fields\\.(String|Integer|Float|Boolean|Email|Choice|UUID|DateTime)\\s*\\("
+        },
+        {
+          "name": "keyword.control.flaxon",
+          "match": "\\b(required|min_length|max_length|minimum|maximum|choices|pattern)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.control.flaxon"
+            }
+          }
+        }
+      ]
+    },
+    "flaxon-exceptions": {
+      "patterns": [
+        {
+          "name": "support.class.flaxon",
+          "match": "HTTPException\\s*\\("
+        },
+        {
+          "name": "constant.numeric.flaxon",
+          "match": "(400|401|403|404|422|500)\\s*[,)]"
+        }
+      ]
+    },
+    "flaxon-websocket": {
+      "patterns": [
+        {
+          "name": "keyword.control.flaxon",
+          "match": "\\b(socket\\.(accept|send_|receive_|close|join|leave|broadcast_))\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.control.flaxon"
+            }
+          }
+        }
+      ]
+    },
+    "flaxon-request": {
+      "patterns": [
+        {
+          "name": "support.function.flaxon",
+          "match": "\\brequest\\.(json|form|body|headers|query_params|path_params|cookies|state)\\b"
+        }
+      ]
+    }
+  }
+}

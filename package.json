@@ -1,0 +1,320 @@
+{
+  "name": "flaxon-vscode",
+  "displayName": "Flaxon",
+  "description": "Full IDE support for Flaxon - the async-first Python backend framework",
+  "version": "0.1.0",
+  "publisher": "flaxon",
+  "author": {
+    "name": "Aldane Hutchinson",
+    "email": "aldanehutchinson5@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aldanedev-create/flaxon-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aldanedev-create/flaxon-vscode/issues"
+  },
+  "homepage": "https://github.com/aldanedev-create/flaxon-vscode#readme",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Debuggers",
+    "Snippets",
+    "Testing"
+  ],
+  "keywords": [
+    "flaxon",
+    "python",
+    "framework",
+    "web",
+    "api",
+    "async",
+    "backend",
+    "flaxon-framework"
+  ],
+  "icon": "resources/icon.png",
+  "galleryBanner": {
+    "color": "#0f172a",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onLanguage:python",
+    "workspaceContains:**/app.py",
+    "workspaceContains:**/main.py",
+    "workspaceContains:**/flaxon.py"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "flaxon.createProject",
+        "title": "Flaxon: Create Project",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.runApp",
+        "title": "Flaxon: Run App",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.debugApp",
+        "title": "Flaxon: Debug App",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.generateRoute",
+        "title": "Flaxon: Generate Route",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.generateSchema",
+        "title": "Flaxon: Generate Schema",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.generatePlugin",
+        "title": "Flaxon: Generate Plugin",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.showRoutes",
+        "title": "Flaxon: Show Routes",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.openDocs",
+        "title": "Flaxon: Open Documentation",
+        "category": "Flaxon"
+      },
+      {
+        "command": "flaxon.restartLanguageServer",
+        "title": "Flaxon: Restart Language Server",
+        "category": "Flaxon"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "flaxonRoutes",
+          "name": "Flaxon Routes",
+          "icon": "resources/route-icon.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "flaxonRoutes",
+        "contents": "No Flaxon routes found.\n[Create a Flaxon project](command:flaxon.createProject)"
+      }
+    ],
+    "languages": [
+      {
+        "id": "python",
+        "extensions": [
+          ".py"
+        ],
+        "aliases": [
+          "Python",
+          "py"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "python",
+        "scopeName": "source.python",
+        "path": "./syntaxes/flaxon.tmLanguage.json",
+        "injectTo": [
+          "source.python"
+        ]
+      }
+    ],
+    "snippets": [
+      {
+        "language": "python",
+        "path": "./snippets/flaxon.json"
+      }
+    ],
+    "configuration": {
+      "title": "Flaxon",
+      "properties": {
+        "flaxon.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to Python interpreter for Flaxon commands",
+          "scope": "machine-overridable"
+        },
+        "flaxon.entryPoint": {
+          "type": "string",
+          "default": "app:app",
+          "description": "Flaxon application entry point (module:variable)",
+          "scope": "machine-overridable"
+        },
+        "flaxon.enableRouteExplorer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Route Explorer tree view",
+          "scope": "window"
+        },
+        "flaxon.enableCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CodeLens for routes",
+          "scope": "window"
+        },
+        "flaxon.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable real-time diagnostics and linting",
+          "scope": "window"
+        },
+        "flaxon.enableCompletions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable intelligent code completions",
+          "scope": "window"
+        },
+        "flaxon.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace level for language server",
+          "scope": "window"
+        },
+        "flaxon.debug.reload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-reload on save when debugging",
+          "scope": "machine-overridable"
+        },
+        "flaxon.snippets.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Flaxon code snippets",
+          "scope": "window"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "flaxon.showRoutes",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorTextFocus && editorLangId == 'python'"
+      },
+      {
+        "command": "flaxon.runApp",
+        "key": "ctrl+shift+f5",
+        "mac": "cmd+shift+f5",
+        "when": "editorTextFocus && editorLangId == 'python'"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "flaxon.generateRoute",
+          "group": "Flaxon",
+          "when": "editorLangId == 'python'"
+        },
+        {
+          "command": "flaxon.generateSchema",
+          "group": "Flaxon",
+          "when": "editorLangId == 'python'"
+        }
+      ],
+      "command-palette": [
+        {
+          "command": "flaxon.createProject",
+          "when": "true"
+        },
+        {
+          "command": "flaxon.runApp",
+          "when": "true"
+        },
+        {
+          "command": "flaxon.debugApp",
+          "when": "true"
+        },
+        {
+          "command": "flaxon.generateRoute",
+          "when": "editorLangId == 'python'"
+        },
+        {
+          "command": "flaxon.generateSchema",
+          "when": "editorLangId == 'python'"
+        },
+        {
+          "command": "flaxon.generatePlugin",
+          "when": "editorLangId == 'python'"
+        },
+        {
+          "command": "flaxon.showRoutes",
+          "when": "true"
+        },
+        {
+          "command": "flaxon.openDocs",
+          "when": "true"
+        },
+        {
+          "command": "flaxon.restartLanguageServer",
+          "when": "true"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "npm run compile && node ./out/test/runTest.js",
+    "package": "vsce package",
+    "publish": "vsce publish",
+    "prepack": "npm run compile",
+    "postinstall": "node ./node_modules/vscode/bin/install"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^18.19.130",
+    "@types/vscode": "^1.125.0",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
+    "@vscode/test-electron": "^2.0.0",
+    "@vscode/vsce": "^3.9.2",
+    "chai": "^4.3.0",
+    "eslint": "^8.0.0",
+    "mocha": "^11.7.6",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.0.0"
+  },
+  "badges": [
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/v/flaxon.flaxon-vscode",
+      "href": "https://marketplace.visualstudio.com/items?itemName=flaxon.flaxon-vscode",
+      "description": "Version"
+    },
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/i/flaxon.flaxon-vscode",
+      "href": "https://marketplace.visualstudio.com/items?itemName=flaxon.flaxon-vscode",
+      "description": "Installs"
+    },
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/r/flaxon.flaxon-vscode",
+      "href": "https://marketplace.visualstudio.com/items?itemName=flaxon.flaxon-vscode",
+      "description": "Rating"
+    }
+  ],
+  "markdown": "github",
+  "qna": "marketplace"
+}
