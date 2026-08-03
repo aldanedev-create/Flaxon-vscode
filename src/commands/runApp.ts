@@ -20,7 +20,12 @@ export async function runApp(): Promise<void> {
             return;
         }
 
-        const pythonPath = vscode.workspace.getConfiguration('flaxon').get('pythonPath', 'python3');
+        const configuredPythonPath = vscode.workspace
+            .getConfiguration('flaxon')
+            .get<unknown>('pythonPath');
+        const pythonPath = typeof configuredPythonPath === 'string' && configuredPythonPath.trim()
+            ? configuredPythonPath.trim()
+            : (process.platform === 'win32' ? 'python' : 'python3');
         if (!await checkPythonInstalled(pythonPath)) {
             vscode.window.showErrorMessage('Python is not installed or not found in PATH.');
             return;
@@ -51,7 +56,12 @@ export async function runApp(): Promise<void> {
             env: process.env
         });
 
-        const command = `${pythonPath} -m flaxon ${args.join(' ')}`;
+        const command = [
+            quoteShellArgument(pythonPath),
+            '-m',
+            'flaxon',
+            ...args.map(quoteShellArgument)
+        ].join(' ');
         logger.info(`Running: ${command}`);
         
         terminal.sendText(command);
@@ -90,7 +100,7 @@ async function findEntryPoint(workspacePath: string): Promise<string | null> {
 
 async function checkPythonInstalled(pythonPath: string): Promise<boolean> {
     return new Promise((resolve) => {
-        child_process.exec(`${pythonPath} --version`, (error) => {
+        child_process.execFile(pythonPath, ['--version'], (error) => {
             resolve(!error);
         });
     });
@@ -98,30 +108,47 @@ async function checkPythonInstalled(pythonPath: string): Promise<boolean> {
 
 async function checkFlaxonInstalled(pythonPath: string, workspacePath: string): Promise<boolean> {
     return new Promise((resolve) => {
-        const command = `${pythonPath} -c "import flaxon"`;
-        child_process.exec(command, { cwd: workspacePath }, (error) => {
+        child_process.execFile(
+            pythonPath,
+            ['-c', 'import flaxon'],
+            { cwd: workspacePath },
+            (error) => {
             resolve(!error);
-        });
+            }
+        );
     });
 }
 
 async function installFlaxon(pythonPath: string, workspacePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
-        const isWindows = process.platform === 'win32';
-        const pipCommand = isWindows ? 'pip' : 'pip3';
-        const command = `${pythonPath} -m ${pipCommand} install flaxon`;
-        logger.info(`Installing Flaxon: ${command}`);
+        const args = ['-m', 'pip', 'install', 'flaxon'];
+        logger.info(`Installing Flaxon: ${pythonPath} ${args.join(' ')}`);
+        const proc = child_process.spawn(pythonPath, args, {
+            cwd: workspacePath,
+            env: process.env,
+            shell: false
+        });
 
-        const proc = child_process.exec(command, { cwd: workspacePath });
+        proc.stdout.on('data', (data: Buffer) => logger.info(data.toString().trimEnd()));
+        proc.stderr.on('data', (data: Buffer) => logger.error(data.toString().trimEnd()));
 
-        process.on('close', (code: number) => {
+        proc.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
             if (code === 0) {
                 resolve();
+            } else if (signal) {
+                reject(new Error(`Installation was terminated by ${signal}`));
             } else {
-                reject(new Error(`Installation failed with code ${code}`));
+                reject(new Error(`Installation failed with code ${code ?? 'unknown'}`));
             }
         });
 
-        process.on('error', reject);
+        proc.once('error', reject);
     });
+}
+
+function quoteShellArgument(value: string): string {
+    if (process.platform === 'win32') {
+        return `"${value.replace(/(["\\])/g, '\\$1')}"`;
+    }
+    return `'${value.replace(/'/g, "'\\''")}'`;
 }

@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { logger } from '../utils/logger';
 
 /**
  * Hover provider for Flaxon APIs.
@@ -37,6 +36,10 @@ async def handler(request):
 **Parameters:**
 - \`path\`: Route path
 - \`name\`: Optional route name`);
+
+        this.docs.set('@app.put', this.docs.get('@app.post')!);
+        this.docs.set('@app.delete', this.docs.get('@app.get')!);
+        this.docs.set('@app.patch', this.docs.get('@app.post')!);
 
         this.docs.set('@app.websocket', `**Flaxon WebSocket route**
 \`\`\`python
@@ -122,28 +125,53 @@ is_active = fields.Boolean(
         document: vscode.TextDocument,
         position: vscode.Position
     ): vscode.Hover | Thenable<vscode.Hover> | null {
-        const range = document.getWordRangeAtPosition(position, /@app\.[a-zA-Z]+|fields\.[a-zA-Z]+|HTTPException|[A-Z][a-zA-Z]*/);
-        if (!range) {
-            return null;
+        const line = document.lineAt(position.line).text;
+        const wordRange = document.getWordRangeAtPosition(
+            position,
+            /[A-Za-z_][A-Za-z0-9_]*/
+        );
+        let range = wordRange;
+        let docKey: string | undefined;
+
+        const decoratorMatch = line.match(/@app\.(get|post|put|delete|patch|websocket)\b/);
+        if (decoratorMatch) {
+            const start = line.indexOf(decoratorMatch[0]);
+            const end = start + decoratorMatch[0].length;
+            if (position.character >= start && position.character <= end) {
+                range = new vscode.Range(
+                    position.line,
+                    start,
+                    position.line,
+                    end
+                );
+                docKey = `@app.${decoratorMatch[1]}`;
+            }
         }
 
-        const word = document.getText(range);
-        
-        // Check if word is in our documentation
-        let docKey = word;
-        
-        // Handle specific matches
-        if (word === 'get' || word === 'post' || word === 'put' || word === 'delete' || word === 'patch' || word === 'websocket') {
-            const line = document.lineAt(position.line).text;
-            if (line.includes('@app.')) {
-                docKey = `@app.${word}`;
+        const fieldMatch = line.match(/fields\.(String|Integer|Float|Boolean|Email|Choice|UUID|DateTime)\b/);
+        if (!docKey && fieldMatch) {
+            const start = line.indexOf(fieldMatch[0]);
+            const end = start + fieldMatch[0].length;
+            if (position.character >= start && position.character <= end) {
+                range = new vscode.Range(position.line, start, position.line, end);
+                docKey = fieldMatch[0];
             }
+        }
+
+        if (!docKey && line.includes('HTTPException')) {
+            const start = line.indexOf('HTTPException');
+            const end = start + 'HTTPException'.length;
+            if (position.character >= start && position.character <= end) {
+                range = new vscode.Range(position.line, start, position.line, end);
+                docKey = 'HTTPException';
+            }
+        }
+        if (!range || !docKey) {
+            return null;
         }
 
         if (this.docs.has(docKey)) {
             const hoverContent = new vscode.MarkdownString(this.docs.get(docKey)!);
-            hoverContent.supportHtml = true;
-            hoverContent.isTrusted = true;
             return new vscode.Hover(hoverContent, range);
         }
 

@@ -25,36 +25,31 @@ export class CodeLensProvider implements vscode.CodeLensProvider {
             const routes = parseFlaxonApp(text);
             
             for (const route of routes) {
-                if (route.line) {
+                if (Number.isInteger(route.line) && route.line >= 0) {
+                    const lineIndex = Math.min(route.line - 1, Math.max(0, document.lineCount - 1));
+                    const lineLength = document.lineAt(lineIndex).text.length;
                     const range = new vscode.Range(
-                        new vscode.Position(route.line - 1, 0),
-                        new vscode.Position(route.line - 1, 100)
+                        new vscode.Position(lineIndex, 0),
+                        new vscode.Position(lineIndex, lineLength)
                     );
 
                     // Run test CodeLens
                     const runCommand: vscode.CodeLens = new vscode.CodeLens(range, {
-                        title: '▶ Run',
+                        title: '▶ Run App',
                         command: 'flaxon.runApp',
-                        arguments: [route]
+                        arguments: []
                     });
 
                     // Debug test CodeLens
                     const debugCommand: vscode.CodeLens = new vscode.CodeLens(range, {
-                        title: '🐛 Debug',
+                        title: '🔍 Debug App',
                         command: 'flaxon.debugApp',
-                        arguments: [route]
+                        arguments: []
                     });
 
                     codeLenses.push(runCommand);
                     codeLenses.push(debugCommand);
 
-                    // Show route references count
-                    const refCommand: vscode.CodeLens = new vscode.CodeLens(range, {
-                        title: `📍 ${route.references || 0} refs`,
-                        command: 'editor.action.showReferences',
-                        arguments: [document.uri, range.start, []]
-                    });
-                    codeLenses.push(refCommand);
                 }
             }
         } catch (error) {
@@ -69,5 +64,9 @@ export class CodeLensProvider implements vscode.CodeLensProvider {
      */
     refresh(): void {
         this._onDidChangeCodeLenses.fire();
+    }
+
+    dispose(): void {
+        this._onDidChangeCodeLenses.dispose();
     }
 }

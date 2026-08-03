@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { logger } from '../utils/logger';
 
 /**
  * Completion provider for Flaxon APIs.
@@ -15,11 +14,17 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
     ): vscode.CompletionItem[] | Thenable<vscode.CompletionItem[]> {
         const line = document.lineAt(position.line).text;
         const textBeforeCursor = line.substring(0, position.character);
+        const trimmedBeforeCursor = textBeforeCursor.trimStart();
+        const currentWord = textBeforeCursor.match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0] || '';
+        const replacementRange = document.getWordRangeAtPosition(
+            position,
+            /[A-Za-z_][A-Za-z0-9_]*/
+        ) || new vscode.Range(position, position);
 
         const completions: vscode.CompletionItem[] = [];
 
         // Route decorator completions
-        if (textBeforeCursor.includes('@app.')) {
+        if (/@app\.[A-Za-z_]*$/.test(trimmedBeforeCursor)) {
             const decorators = [
                 { label: 'get', detail: '@app.get("/path")', documentation: 'GET route decorator' },
                 { label: 'post', detail: '@app.post("/path")', documentation: 'POST route decorator' },
@@ -34,13 +39,14 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
                 item.detail = dec.detail;
                 item.documentation = new vscode.MarkdownString(dec.documentation);
                 item.insertText = `${dec.label}("")`;
+                item.range = replacementRange;
                 item.sortText = `0${dec.label}`;
                 completions.push(item);
             }
         }
 
         // Schema field completions
-        if (textBeforeCursor.includes('fields.')) {
+        if (/fields\.[A-Za-z_]*$/.test(trimmedBeforeCursor)) {
             const fields = [
                 { label: 'String', detail: 'fields.String(required=True)', documentation: 'String field' },
                 { label: 'Integer', detail: 'fields.Integer(required=True)', documentation: 'Integer field' },
@@ -57,13 +63,14 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
                 item.detail = field.detail;
                 item.documentation = new vscode.MarkdownString(field.documentation);
                 item.insertText = `${field.label}(required=True)`;
+                item.range = replacementRange;
                 item.sortText = `0${field.label}`;
                 completions.push(item);
             }
         }
 
         // HTTP Exception completions
-        if (textBeforeCursor.includes('HTTPException(')) {
+        if (/HTTPException\(\s*\d*$/.test(trimmedBeforeCursor)) {
             const exceptions = [
                 { label: '400', detail: 'HTTPException(400, "Bad Request")' },
                 { label: '401', detail: 'HTTPException(401, "Unauthorized")' },
@@ -77,13 +84,14 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
                 const item = new vscode.CompletionItem(exc.label, vscode.CompletionItemKind.Constant);
                 item.detail = exc.detail;
                 item.insertText = `${exc.label}, "${exc.detail.split('"')[1]}"`;
+                item.range = replacementRange;
                 item.sortText = `0${exc.label}`;
                 completions.push(item);
             }
         }
 
         // Request method completions
-        if (textBeforeCursor.includes('request.')) {
+        if (/request\.[A-Za-z_]*$/.test(trimmedBeforeCursor)) {
             const methods = [
                 { label: 'json()', detail: 'await request.json()', documentation: 'Parse JSON body' },
                 { label: 'form()', detail: 'await request.form()', documentation: 'Parse form data' },
@@ -98,17 +106,22 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
                 const item = new vscode.CompletionItem(method.label, vscode.CompletionItemKind.Method);
                 item.detail = method.detail;
                 item.documentation = new vscode.MarkdownString(method.documentation);
+                item.insertText = method.label.endsWith('()')
+                    ? new vscode.SnippetString(`${method.label.slice(0, -2)}()`)
+                    : method.label;
+                item.range = replacementRange;
                 item.sortText = `0${method.label}`;
                 completions.push(item);
             }
         }
 
         // Schema class completions
-        if (textBeforeCursor.includes('class ') && textBeforeCursor.includes('(Schema)')) {
+        if (/class\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*$/.test(trimmedBeforeCursor)) {
             const item = new vscode.CompletionItem('Schema', vscode.CompletionItemKind.Class);
             item.detail = 'from flaxon.validation import Schema, fields';
             item.documentation = new vscode.MarkdownString('**Schema class**\n\n```python\nclass MySchema(Schema):\n    name = fields.String(required=True)\n```');
             item.insertText = `Schema`;
+            item.range = replacementRange;
             completions.push(item);
         }
 

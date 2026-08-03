@@ -53,6 +53,9 @@ export async function generateSchema(): Promise<void> {
                     if (!/^[a-z][a-zA-Z0-9_]*$/.test(value)) {
                         return 'Field name should start with lowercase';
                     }
+                    if (fields.some(field => field.name === value)) {
+                        return 'A field with this name already exists';
+                    }
                     return null;
                 }
             });
@@ -90,16 +93,16 @@ export async function generateSchema(): Promise<void> {
                     prompt: `Minimum length for "${fieldName}" (optional)`,
                     placeHolder: 'e.g., 2'
                 });
-                if (minLen && !isNaN(parseInt(minLen))) {
-                    constraints.push(`min_length=${minLen}`);
+                if (minLen && /^\d+$/.test(minLen.trim())) {
+                    constraints.push(`min_length=${Number(minLen)}`);
                 }
 
                 const maxLen = await vscode.window.showInputBox({
                     prompt: `Maximum length for "${fieldName}" (optional)`,
                     placeHolder: 'e.g., 80'
                 });
-                if (maxLen && !isNaN(parseInt(maxLen))) {
-                    constraints.push(`max_length=${maxLen}`);
+                if (maxLen && /^\d+$/.test(maxLen.trim())) {
+                    constraints.push(`max_length=${Number(maxLen)}`);
                 }
             }
 
@@ -108,16 +111,16 @@ export async function generateSchema(): Promise<void> {
                     prompt: `Minimum value for "${fieldName}" (optional)`,
                     placeHolder: 'e.g., 0'
                 });
-                if (minimum && !isNaN(parseFloat(minimum))) {
-                    constraints.push(`minimum=${minimum}`);
+                if (minimum && isStrictNumber(minimum)) {
+                    constraints.push(`minimum=${Number(minimum)}`);
                 }
 
                 const maximum = await vscode.window.showInputBox({
                     prompt: `Maximum value for "${fieldName}" (optional)`,
                     placeHolder: 'e.g., 100'
                 });
-                if (maximum && !isNaN(parseFloat(maximum))) {
-                    constraints.push(`maximum=${maximum}`);
+                if (maximum && isStrictNumber(maximum)) {
+                    constraints.push(`maximum=${Number(maximum)}`);
                 }
             }
 
@@ -127,7 +130,15 @@ export async function generateSchema(): Promise<void> {
                     placeHolder: 'active,inactive,pending'
                 });
                 if (choices) {
-                    constraints.push(`choices=[${choices.split(',').map((c: string) => `"${c.trim()}"`).join(', ')}]`);
+                    const choiceValues = choices
+                        .split(',')
+                        .map((choice: string) => choice.trim())
+                        .filter(Boolean);
+                    if (choiceValues.length > 0) {
+                        constraints.push(
+                            `choices=[${choiceValues.map(toPythonString).join(', ')}]`
+                        );
+                    }
                 }
             }
 
@@ -155,7 +166,13 @@ export async function generateSchema(): Promise<void> {
         const fileName = await vscode.window.showInputBox({
             prompt: 'Enter file name',
             placeHolder: defaultFileName,
-            value: defaultFileName
+            value: defaultFileName,
+            validateInput: (value: string) => {
+                if (!value || !/^[a-zA-Z0-9_-]+\.py$/.test(value)) {
+                    return 'Use a Python filename such as CreateUser.py';
+                }
+                return null;
+            }
         });
 
         if (!fileName) {
@@ -176,7 +193,7 @@ export async function generateSchema(): Promise<void> {
         }
 
         const schemaContent = generateSchemaContent(schemaName, fields);
-        fs.writeFileSync(filePath, schemaContent);
+        fs.writeFileSync(filePath, schemaContent, 'utf8');
 
         const document = await vscode.workspace.openTextDocument(filePath);
         await vscode.window.showTextDocument(document);
@@ -189,6 +206,14 @@ export async function generateSchema(): Promise<void> {
         logger.error(`Failed to generate schema: ${message}`);
         vscode.window.showErrorMessage(`Failed to generate schema: ${message}`);
     }
+}
+
+function isStrictNumber(value: string): boolean {
+    return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim());
+}
+
+function toPythonString(value: string): string {
+    return JSON.stringify(value);
 }
 
 function generateSchemaContent(schemaName: string, fields: { name: string; type: string; required: boolean; constraints: string[] }[]): string {

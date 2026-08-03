@@ -67,15 +67,27 @@ class Logger {
         // Log to output channel
         if (this.outputChannel) {
             this.outputChannel.appendLine(logMessage);
-            if (data) {
-                this.outputChannel.appendLine(JSON.stringify(data, null, 2));
+            
+            // Bug 22 Fixed: Check for undefined explicitly so we don't skip 0, false, or ""
+            if (data !== undefined) {
+                let dataString: string;
+                try {
+                    // Bug 21 Fixed: Wrap in try/catch to prevent circular reference crashes
+                    const stringified = JSON.stringify(data, null, 2);
+                    
+                    // Bug 23 Fixed: stringified can be undefined. Fallback to String() to guarantee appendLine gets a string.
+                    dataString = stringified !== undefined ? stringified : String(data);
+                } catch (e) {
+                    dataString = `[Unserializable data: ${String(data)}]`;
+                }
+                this.outputChannel.appendLine(dataString);
             }
         }
 
         // Log to console in development
         if (process.env.NODE_ENV === 'development') {
             console.log(logMessage);
-            if (data) {
+            if (data !== undefined) {
                 console.log(data);
             }
         }

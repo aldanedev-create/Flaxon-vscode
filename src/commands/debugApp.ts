@@ -19,7 +19,13 @@ export async function debugApp(): Promise<void> {
             return;
         }
 
-        const pythonPath = vscode.workspace.getConfiguration('flaxon').get('pythonPath', 'python3');
+        const configuredPythonPath = vscode.workspace
+            .getConfiguration('flaxon')
+            .get<unknown>('pythonPath');
+        const pythonPath = typeof configuredPythonPath === 'string' && configuredPythonPath.trim()
+            ? configuredPythonPath.trim()
+            : (process.platform === 'win32' ? 'python' : 'python3');
+        const existingPythonPath = process.env.PYTHONPATH;
 
         const debugConfig: vscode.DebugConfiguration = {
             name: 'Flaxon: Debug App',
@@ -27,9 +33,13 @@ export async function debugApp(): Promise<void> {
             request: 'launch',
             module: 'flaxon',
             args: ['run', entryPoint],
+            python: pythonPath,
             console: 'integratedTerminal',
             env: {
-                PYTHONPATH: workspacePath
+                ...process.env,
+                PYTHONPATH: existingPythonPath
+                    ? `${workspacePath}${path.delimiter}${existingPythonPath}`
+                    : workspacePath
             },
             cwd: workspacePath
         };

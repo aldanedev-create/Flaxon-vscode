@@ -1,7 +1,3 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { logger } from './logger';
-
 /**
  * Parse Flaxon application structure from Python files.
  */
@@ -52,71 +48,32 @@ export interface SchemaField {
  */
 export function parseFlaxonApp(text: string): Route[] {
     const routes: Route[] = [];
-    const lines = text.split('\n');
-
-    // Regex patterns
-    const routePatterns = [
-        { method: 'GET', pattern: /@app\.get\s*\(\s*['"]([^'"]+)['"]/g },
-        { method: 'POST', pattern: /@app\.post\s*\(\s*['"]([^'"]+)['"]/g },
-        { method: 'PUT', pattern: /@app\.put\s*\(\s*['"]([^'"]+)['"]/g },
-        { method: 'DELETE', pattern: /@app\.delete\s*\(\s*['"]([^'"]+)['"]/g },
-        { method: 'PATCH', pattern: /@app\.patch\s*\(\s*['"]([^'"]+)['"]/g },
-        { method: 'WS', pattern: /@app\.websocket\s*\(\s*['"]([^'"]+)['"]/g }
-    ];
-
-    const handlerPattern = /(async\s+)?def\s+(\w+)\s*\(/;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    
+    // Regex that catches any router variable, multiline spacing, and the matching handler
+    // ^[ \t]* forces it to not match mid-string/comment.
+    // [\s\S]*? handles multiline decorator arguments until it finds the async def / def
+    const routeRegex = /^[ \t]*@(\w+)\.(get|post|put|delete|patch|websocket)\s*\(\s*['"]([^'"]+)['"][^)]*\)[\s\S]*?^[ \t]*(async\s+)?def\s+(\w+)\s*\(/gm;
+    
+    let match;
+    while ((match = routeRegex.exec(text)) !== null) {
+        const method = match[2].toUpperCase();
+        const path = match[3];
+        const handler = match[5];
         
-        for (const route of routePatterns) {
-            // Reset regex
-            route.pattern.lastIndex = 0;
-            let match = route.pattern.exec(line);
-            
-            while (match) {
-                const path = match[1];
-                
-                // Find handler (look ahead or behind)
-                let handler = 'unknown';
-                let handlerLine = i;
-                
-                // Check if handler is on same line
-                const handlerMatch = handlerPattern.exec(line);
-                if (handlerMatch) {
-                    handler = handlerMatch[2];
-                } else {
-                    // Look at next lines for handler
-                    for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
-                        const handlerMatch2 = handlerPattern.exec(lines[j]);
-                        if (handlerMatch2) {
-                            handler = handlerMatch2[2];
-                            handlerLine = j;
-                            break;
-                        }
-                    }
-                }
+        // Calculate line number safely by counting newlines prior to the match
+        const upToMatch = text.substring(0, match.index);
+        const line = upToMatch.split('\n').length;
+        
+        const parameters = extractPathParameters(path);
 
-                // Extract parameters from path
-                const parameters = extractPathParameters(path);
-
-                // Extract route name
-                const nameMatch = line.match(/name\s*=\s*['"]([^'"]+)['"]/);
-                const name = nameMatch ? nameMatch[1] : undefined;
-
-                routes.push({
-                    method: route.method,
-                    path: path,
-                    handler: handler,
-                    line: handlerLine + 1,
-                    file: '',
-                    name: name,
-                    parameters: parameters
-                });
-
-                match = route.pattern.exec(line);
-            }
-        }
+        routes.push({
+            method: method === 'WEBSOCKET' ? 'WS' : method,
+            path: path,
+            handler: handler,
+            line: line,
+            file: '', // Filled by the caller
+            parameters: parameters
+        });
     }
 
     return routes;
@@ -126,15 +83,18 @@ export function parseFlaxonApp(text: string): Route[] {
  * Extract parameters from a path string.
  */
 function extractPathParameters(path: string): string[] {
-    const params: string[] = [];
+    const params = new Set<string>(); // Use a Set to prevent duplicates
     const paramRegex = /<([^>]+)>/g;
-    let match = paramRegex.exec(path);
-    while (match) {
-        const param = match[1].split(':')[1] || match[1];
-        params.push(param);
-        match = paramRegex.exec(path);
+    
+    let match;
+    while ((match = paramRegex.exec(path)) !== null) {
+        // Handles formats like <id>, <int:id>, or <converter:user:id>
+        const parts = match[1].split(':');
+        const paramName = parts[parts.length - 1].trim();
+        params.add(paramName);
     }
-    return params;
+    
+    return Array.from(params);
 }
 
 /**
@@ -144,47 +104,63 @@ export function parseSchemas(text: string): Schema[] {
     const schemas: Schema[] = [];
     const lines = text.split('\n');
 
-    const schemaRegex = /class\s+(\w+)\s*\(\s*Schema\s*\)/;
+    // Capture the base indentation to know when the class ends
+    const schemaRegex = /^([ \t]*)class\s+(\w+)\s*\(\s*Schema\s*\)/;
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const match = schemaRegex.exec(line);
         
         if (match) {
-            const name = match[1];
+            const baseIndent = match[1];
+            const name = match[2];
             const fields: SchemaField[] = [];
             
-            // Find fields (look ahead)
-            for (let j = i + 1; j < Math.min(i + 50, lines.length); j++) {
-                const fieldLine = lines[j].trim();
-                if (fieldLine && fieldLine !== '"""' && !fieldLine.startsWith('#')) {
-                    const fieldMatch = /(\w+)\s*=\s*fields\.(\w+)\s*\(/.exec(fieldLine);
-                    if (fieldMatch) {
-                        const fieldName = fieldMatch[1];
-                        const fieldType = fieldMatch[2];
-                        const required = fieldLine.includes('required=True');
-                        const constraints: string[] = [];
-                        
-                        // Extract constraints
-                        const minMatch = fieldLine.match(/min_length\s*=\s*(\d+)/);
-                        if (minMatch) constraints.push(`min_length=${minMatch[1]}`);
-                        
-                        const maxMatch = fieldLine.match(/max_length\s*=\s*(\d+)/);
-                        if (maxMatch) constraints.push(`max_length=${maxMatch[1]}`);
-                        
-                        const minValMatch = fieldLine.match(/minimum\s*=\s*(\d+)/);
-                        if (minValMatch) constraints.push(`minimum=${minValMatch[1]}`);
-                        
-                        const maxValMatch = fieldLine.match(/maximum\s*=\s*(\d+)/);
-                        if (maxValMatch) constraints.push(`maximum=${maxValMatch[1]}`);
-                        
-                        fields.push({
-                            name: fieldName,
-                            type: fieldType,
-                            required: required,
-                            constraints: constraints
-                        });
-                    }
+            // Scan fields, strictly checking indentation
+            for (let j = i + 1; j < lines.length; j++) {
+                const fieldLine = lines[j];
+                
+                if (fieldLine.trim() === '') continue; // Skip empty lines inside class
+                
+                // If indentation drops back to or below the class declaration, we've left the class
+                const indentMatch = fieldLine.match(/^([ \t]*)/);
+                const currentIndent = indentMatch ? indentMatch[1] : '';
+                if (currentIndent.length <= baseIndent.length) {
+                    break;
+                }
+
+                const trimmed = fieldLine.trim();
+                if (trimmed.startsWith('#') || trimmed.startsWith('"""') || trimmed.startsWith("'''")) continue;
+
+                const fieldMatch = /(\w+)\s*=\s*fields\.(\w+)\s*\(/.exec(trimmed);
+                if (fieldMatch) {
+                    const fieldName = fieldMatch[1];
+                    const fieldType = fieldMatch[2];
+                    const required = trimmed.includes('required=True');
+                    const constraints: string[] = [];
+                    
+                    // Regex updated to handle integers, floats, negatives, and lists
+                    const minMatch = trimmed.match(/min_length\s*=\s*(\d+)/);
+                    if (minMatch) constraints.push(`min_length=${minMatch[1]}`);
+                    
+                    const maxMatch = trimmed.match(/max_length\s*=\s*(\d+)/);
+                    if (maxMatch) constraints.push(`max_length=${maxMatch[1]}`);
+                    
+                    const minValMatch = trimmed.match(/minimum\s*=\s*(-?\d+(?:\.\d+)?)/);
+                    if (minValMatch) constraints.push(`minimum=${minValMatch[1]}`);
+                    
+                    const maxValMatch = trimmed.match(/maximum\s*=\s*(-?\d+(?:\.\d+)?)/);
+                    if (maxValMatch) constraints.push(`maximum=${maxValMatch[1]}`);
+                    
+                    const choicesMatch = trimmed.match(/choices\s*=\s*(\[[^\]]+\])/);
+                    if (choicesMatch) constraints.push(`choices=${choicesMatch[1]}`);
+
+                    fields.push({
+                        name: fieldName,
+                        type: fieldType,
+                        required: required,
+                        constraints: constraints
+                    });
                 }
             }
 
@@ -207,10 +183,13 @@ export function parseImports(text: string): string[] {
     const imports: string[] = [];
     const lines = text.split('\n');
 
-    const importRegex = /^(?:from\s+(\S+)\s+)?import\s+(\S+)/;
+    const importRegex = /^(?:from\s+(\S+)\s+)?import\s+(.+)/;
 
     for (const line of lines) {
         const trimmed = line.trim();
+        // Ignore commented out imports
+        if (trimmed.startsWith('#')) continue;
+
         if (trimmed.startsWith('import ') || trimmed.startsWith('from ')) {
             const match = importRegex.exec(trimmed);
             if (match) {

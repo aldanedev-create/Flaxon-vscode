@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
 import * as child_process from 'child_process';
 import { logger } from '../utils/logger';
 
@@ -78,72 +77,73 @@ export async function createProject(): Promise<void> {
     }
 }
 
-function runFlaxonCommand(args: string[], cwd: string): Promise<void> {
+function getPythonPath(): string {
+    const configured = vscode.workspace.getConfiguration('flaxon').get<unknown>('pythonPath');
+    return typeof configured === 'string' && configured.trim()
+        ? configured.trim()
+        : (process.platform === 'win32' ? 'python' : 'python3');
+}
+
+function runCommand(
+    executable: string,
+    args: string[],
+    cwd: string,
+    description: string
+): Promise<void> {
     return new Promise((resolve, reject) => {
-        const command = `flaxon ${args.join(' ')}`;
-        logger.info(`Running: ${command} in ${cwd}`);
-
-        const proc = child_process.exec(command, { cwd: cwd, env: process.env });
-
-        process.stdout?.on('data', (data: Buffer) => {
-            logger.info(data.toString());
+        logger.info(`Running: ${executable} ${args.join(' ')} in ${cwd}`);
+        const proc = child_process.spawn(executable, args, {
+            cwd,
+            env: process.env,
+            shell: false
         });
 
-        process.stderr?.on('data', (data: Buffer) => {
-            logger.error(data.toString());
+        proc.stdout.on('data', (data: Buffer) => {
+            logger.info(data.toString().trimEnd());
         });
 
-        process.on('close', (code: number) => {
+        proc.stderr.on('data', (data: Buffer) => {
+            logger.error(data.toString().trimEnd());
+        });
+
+        proc.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
             if (code === 0) {
                 resolve();
+            } else if (signal) {
+                reject(new Error(`${description} was terminated by ${signal}`));
             } else {
-                reject(new Error(`Command failed with code ${code}`));
+                reject(new Error(`${description} failed with code ${code ?? 'unknown'}`));
             }
         });
 
-        process.on('error', (error: Error) => {
-            reject(error);
+        proc.once('error', (error: Error) => {
+            reject(new Error(`${description} could not start: ${error.message}`));
         });
     });
+}
+
+function runFlaxonCommand(args: string[], cwd: string): Promise<void> {
+    return runCommand('flaxon', args, cwd, 'Flaxon project creation');
 }
 
 async function createVirtualEnvironment(projectPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const pythonPath = vscode.workspace.getConfiguration('flaxon').get('pythonPath', 'python3');
-        const command = `${pythonPath} -m venv .venv`;
-        logger.info(`Creating virtual environment: ${command}`);
-
-        const process = child_process.exec(command, { cwd: projectPath });
-
-        process.on('close', (code: number) => {
-            if (code === 0) {
-                resolve();
-            } else {
-                reject(new Error(`Virtual environment creation failed with code ${code}`));
-            }
-        });
-
-        process.on('error', reject);
-    });
+    await runCommand(
+        getPythonPath(),
+        ['-m', 'venv', '.venv'],
+        projectPath,
+        'Virtual environment creation'
+    );
 }
 
 async function installDependencies(projectPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const isWindows = process.platform === 'win32';
-        const pipCommand = isWindows ? `.venv\\Scripts\\pip` : `.venv/bin/pip`;
-        const command = `${pipCommand} install flaxon`;
-        logger.info(`Installing dependencies: ${command}`);
-
-        const proc = child_process.exec(command, { cwd: projectPath });
-
-        process.on('close', (code: number) => {
-            if (code === 0) {
-                resolve();
-            } else {
-                reject(new Error(`Dependency installation failed with code ${code}`));
-            }
-        });
-
-        process.on('error', reject);
-    });
+    const pythonInVenv = path.join(
+        projectPath,
+        process.platform === 'win32' ? '.venv\\Scripts\\python.exe' : '.venv/bin/python'
+    );
+    await runCommand(
+        pythonInVenv,
+        ['-m', 'pip', 'install', 'flaxon'],
+        projectPath,
+        'Dependency installation'
+    );
 }

@@ -29,6 +29,9 @@ export async function generateRoute(): Promise<void> {
                 if (!value.startsWith('/')) {
                     return 'Route path must start with "/"';
                 }
+                if (/[\\'"`\r\n]/.test(value)) {
+                    return 'Route path cannot contain quotes, backslashes, or newlines';
+                }
                 return null;
             }
         });
@@ -55,8 +58,8 @@ export async function generateRoute(): Promise<void> {
             prompt: 'Enter route name (optional)',
             placeHolder: 'users',
             validateInput: (value) => {
-                if (value && !/^[a-zA-Z0-9_]+$/.test(value)) {
-                    return 'Route name can only contain letters, numbers, and underscores';
+                if (value && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
+                    return 'Route name must start with a letter or underscore and contain only letters, numbers, and underscores';
                 }
                 return null;
             }
@@ -67,7 +70,13 @@ export async function generateRoute(): Promise<void> {
         const fileName = await vscode.window.showInputBox({
             prompt: 'Enter file name',
             placeHolder: `${defaultFileName}.py`,
-            value: `${defaultFileName}.py`
+            value: `${defaultFileName}.py`,
+            validateInput: (value) => {
+                if (!/^[a-zA-Z0-9_-]+\.py$/.test(value)) {
+                    return 'Use a Python filename such as users.py';
+                }
+                return null;
+            }
         });
 
         if (!fileName) {
@@ -89,7 +98,7 @@ export async function generateRoute(): Promise<void> {
         }
 
         const routeContent = generateRouteContent(routePath, method, routeName, workspacePath);
-        fs.writeFileSync(filePath, routeContent);
+        fs.writeFileSync(filePath, routeContent, 'utf8');
 
         // Step 6: Open the file
         const document = await vscode.workspace.openTextDocument(filePath);
@@ -109,18 +118,35 @@ export async function generateRoute(): Promise<void> {
 /**
  * Generate route file content.
  */
-function generateRouteContent(routePath: string, method: string, routeName: string | undefined, workspacePath: string): string {
-    // Check if app is defined in existing files
-    const appVar = findAppVariable(workspacePath);
-    const appImport = appVar ? `from flaxon import Flaxon\n\napp = Flaxon()` : `from flaxon import Flaxon\n\napp = Flaxon()`;
+interface ExistingApp {
+    module: string;
+    variable: string;
+}
+
+function generateRouteContent(
+    routePath: string,
+    method: string,
+    routeName: string | undefined,
+    workspacePath: string
+): string {
+    const existingApp = findAppVariable(workspacePath);
+    const appImport = existingApp
+        ? `from ${existingApp.module} import ${existingApp.variable}`
+        : `from flaxon import Flaxon\n\napp = Flaxon()`;
 
     const methodLower = method.toLowerCase();
-    const handlerName = routeName || `handle_${routePath.replace(/^\//, '').replace(/\//g, '_')}`;
+    const generatedName = routePath
+        .replace(/^\//, '')
+        .replace(/[{}]/g, '')
+        .replace(/[^a-zA-Z0-9_]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    const handlerName = routeName || `handle_${generatedName || 'root'}`;
+    const pythonRoutePath = JSON.stringify(routePath);
 
     let websocketContent = '';
     if (method === 'WS') {
         websocketContent = `
-@app.websocket("${routePath}")
+@app.websocket(${pythonRoutePath})
 async def ${handlerName}(socket):
     """
     WebSocket handler for ${routePath}.
@@ -135,7 +161,7 @@ async def ${handlerName}(socket):
         await socket.close()`;
     } else {
         websocketContent = `
-@app.${methodLower}("${routePath}")
+@app.${methodLower}(${pythonRoutePath})
 async def ${handlerName}(request):
     """
     ${method} handler for ${routePath}.
@@ -154,16 +180,39 @@ ${websocketContent}
 /**
  * Find the app variable in existing files.
  */
-function findAppVariable(workspacePath: string): string | null {
-    const files = fs.readdirSync(workspacePath);
-    const pyFiles = files.filter(f => f.endsWith('.py'));
-    
-    for (const file of pyFiles) {
-        const content = fs.readFileSync(path.join(workspacePath, file), 'utf-8');
-        const match = content.match(/app\s*=\s*Flaxon\(/);
+function findAppVariable(workspacePath: string): ExistingApp | null {
+    const files = collectPythonFiles(workspacePath);
+
+    for (const filePath of files) {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const match = content.match(/\b([a-zA-Z_]\w*)\s*=\s*Flaxon\s*\(/);
         if (match) {
-            return 'app';
+            const relativePath = path.relative(workspacePath, filePath);
+            const module = relativePath
+                .replace(/\.py$/, '')
+                .split(path.sep)
+                .filter(part => part !== '__init__')
+                .join('.');
+            if (module) {
+                return { module, variable: match[1] };
+            }
         }
     }
     return null;
+}
+
+function collectPythonFiles(directory: string): string[] {
+    const results: string[] = [];
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === '.venv' || entry.name === 'node_modules' || entry.name === '__pycache__') {
+            continue;
+        }
+        const fullPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+            results.push(...collectPythonFiles(fullPath));
+        } else if (entry.isFile() && entry.name.endsWith('.py')) {
+            results.push(fullPath);
+        }
+    }
+    return results;
 }

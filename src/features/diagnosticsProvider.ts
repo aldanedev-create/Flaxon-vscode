@@ -7,38 +7,59 @@ import { logger } from '../utils/logger';
  */
 export class DiagnosticsProvider {
     private diagnosticCollection: vscode.DiagnosticCollection;
+    private readonly disposables: vscode.Disposable[] = [];
+    private readonly pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor() {
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection('flaxon');
+        this.disposables.push(this.diagnosticCollection);
         
         // Watch for changes on disk and in workspace
         const watcher = vscode.workspace.createFileSystemWatcher('**/*.py');
-        watcher.onDidChange((uri) => this.runDiagnostics(uri));
-        watcher.onDidCreate((uri) => this.runDiagnostics(uri));
-        vscode.workspace.onDidSaveTextDocument((doc) => this.runDiagnostics(doc.uri));        
+        this.disposables.push(watcher);
+        this.disposables.push(watcher.onDidChange((uri) => this.scheduleDiagnostics(uri)));
+        this.disposables.push(watcher.onDidCreate((uri) => this.scheduleDiagnostics(uri)));
+        this.disposables.push(
+            vscode.workspace.onDidSaveTextDocument((doc) => this.scheduleDiagnostics(doc.uri, doc))
+        );
         
         // Run diagnostics on active editor changes
-        vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this.disposables.push(vscode.window.onDidChangeActiveTextEditor((editor) => {
             if (editor && editor.document.languageId === 'python') {
-                this.runDiagnostics(editor.document.uri);
+                this.scheduleDiagnostics(editor.document.uri, editor.document);
             }
-        });
+        }));
 
         // Initial run for open documents
         vscode.workspace.textDocuments.forEach((doc) => {
             if (doc.languageId === 'python') {
-                this.runDiagnostics(doc.uri);
+                this.scheduleDiagnostics(doc.uri, doc);
             }
         });
+    }
+
+    private scheduleDiagnostics(uri: vscode.Uri, document?: vscode.TextDocument): void {
+        const key = uri.toString();
+        const pending = this.pendingDiagnostics.get(key);
+        if (pending) {
+            clearTimeout(pending);
+        }
+        this.pendingDiagnostics.set(key, setTimeout(() => {
+            this.pendingDiagnostics.delete(key);
+            void this.runDiagnostics(uri, document);
+        }, 150));
     }
 
     /**
      * Run diagnostics on a Python file.
      */
-    private async runDiagnostics(uri: vscode.Uri): Promise<void> {
+    private async runDiagnostics(uri: vscode.Uri, currentDocument?: vscode.TextDocument): Promise<void> {
         try {
-            const document = await vscode.workspace.openTextDocument(uri);
+            const document = currentDocument
+                || vscode.workspace.textDocuments.find(doc => doc.uri.toString() === uri.toString())
+                || await vscode.workspace.openTextDocument(uri);
             if (document.languageId !== 'python') {
+                this.diagnosticCollection.delete(uri);
                 return;
             }
 
@@ -77,7 +98,7 @@ export class DiagnosticsProvider {
                 // Check for @app. decorator without an async function
                 if (line.includes('@app.') && !line.includes('@app.websocket')) {
                     const nextLine = lines[i + 1] || '';
-                    if (!nextLine.includes('async def') && !nextLine.includes('def')) {
+                    if (!nextLine.includes('async def')) {
                         diagnostics.push(this.createDiagnostic(
                             'Route handler should be async',
                             new vscode.Range(
@@ -91,15 +112,23 @@ export class DiagnosticsProvider {
                 }
 
                 // Check for missing return in route
-                if (line.includes('async def') || line.includes('def')) {
-                    const funcLines = [];
-                    let j = i;
-                    while (j < lines.length && !lines[j].includes('@app.') && !lines[j].includes('class ')) {
-                        funcLines.push(lines[j]);
+                if ((line.includes('async def') || /^\s*def\s+/.test(line))
+                    && i > 0
+                    && lines[i - 1].includes('@app.')) {
+                    const indent = line.match(/^\s*/)?.[0].length ?? 0;
+                    let j = i + 1;
+                    const bodyLines: string[] = [];
+                    while (j < lines.length) {
+                        const next = lines[j];
+                        const nextIndent = next.match(/^\s*/)?.[0].length ?? 0;
+                        if (next.trim() && nextIndent <= indent) {
+                            break;
+                        }
+                        bodyLines.push(next);
                         j++;
                     }
-                    const funcText = funcLines.join('\n');
-                    if (funcText.includes('@app.') && !funcText.includes('return') && !funcText.includes('yield')) {
+                    const funcText = bodyLines.join('\n');
+                    if (!funcText.includes('return') && !funcText.includes('yield')) {
                         diagnostics.push(this.createDiagnostic(
                             'Route handler should return a response',
                             new vscode.Range(
@@ -144,7 +173,8 @@ export class DiagnosticsProvider {
 
                 // Check for WebSocket
                 if (line.includes('@app.websocket')) {
-                    if (!line.includes('await socket.accept()') && !text.includes('await socket.accept()')) {
+                    const routeBody = lines.slice(lineNum, lineNum + 30).join('\n');
+                    if (!routeBody.includes('await socket.accept()')) {
                         diagnostics.push(this.createDiagnostic(
                             'WebSocket route should call "await socket.accept()"',
                             new vscode.Range(
@@ -192,6 +222,13 @@ export class DiagnosticsProvider {
      * Dispose diagnostics provider.
      */
     dispose(): void {
-        this.diagnosticCollection.dispose();
+        for (const timer of this.pendingDiagnostics.values()) {
+            clearTimeout(timer);
+        }
+        this.pendingDiagnostics.clear();
+        for (const disposable of this.disposables) {
+            disposable.dispose();
+        }
+        this.disposables.length = 0;
     }
 }

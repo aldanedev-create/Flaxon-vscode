@@ -9,7 +9,6 @@ import { generateSchema } from './commands/generateSchema';
 
 // Features
 import { RouteExplorer } from './features/routeExplorer';
-import { RouteProvider } from './features/routeProvider';
 import { CodeLensProvider } from './features/codeLens';
 import { HoverProvider } from './features/hoverProvider';
 import { CompletionProvider } from './features/completionProvider';
@@ -36,7 +35,7 @@ let statusBarItem: vscode.StatusBarItem | null = null;
 /**
  * Called when the extension is activated.
  */
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
     // 1. Create output channel for logging
     outputChannel = vscode.window.createOutputChannel('Flaxon');
     logger.setOutputChannel(outputChannel);
@@ -62,8 +61,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // 5. Register all providers
     registerProviders(context);
 
-    // 6. Start Language Server
-    startLanguageServer(context);
+    // 6. Start Language Server (Now properly awaited!)
+    await startLanguageServer(context);
 
     // 7. Setup file watchers
     setupFileWatchers(context);
@@ -89,7 +88,8 @@ function registerCommands(context: vscode.ExtensionContext): void {
         { id: 'flaxon.generateSchema', handler: generateSchema },
         { id: 'flaxon.showRoutes', handler: showRoutes },
         { id: 'flaxon.openDocs', handler: openDocumentation },
-        { id: 'flaxon.restartLanguageServer', handler: restartLanguageServer }
+        // Fixed: Wrap in an arrow function so 'context' is passed correctly!
+        { id: 'flaxon.restartLanguageServer', handler: () => restartLanguageServer(context) } 
     ];
 
     commands.forEach((cmd) => {
@@ -112,7 +112,7 @@ function registerLanguageFeatures(context: vscode.ExtensionContext): void {
     configureSyntax(context);
 
     // Register snippets
-    registerSnippets();
+    registerSnippets(context);
 
     logger.info('Language features registered');
 }
@@ -128,7 +128,6 @@ function registerProviders(context: vscode.ExtensionContext): void {
 
     if (isRouteExplorerEnabled) {
         routeExplorer = new RouteExplorer(context);
-        context.subscriptions.push(routeExplorer.getTreeView());
         logger.info('Route Explorer registered');
     }
 
@@ -144,6 +143,7 @@ function registerProviders(context: vscode.ExtensionContext): void {
             codeLensProvider
         );
         context.subscriptions.push(codeLensDisposable);
+        context.subscriptions.push(codeLensProvider);
         logger.info('CodeLens provider registered');
     }
 
@@ -187,11 +187,10 @@ function registerProviders(context: vscode.ExtensionContext): void {
 /**
  * Start the language server.
  */
-function startLanguageServer(context: vscode.ExtensionContext): void {
+async function startLanguageServer(context: vscode.ExtensionContext): Promise<void> {
     try {
-        // ✅ Pass context to LanguageServer
         languageServer = new LanguageServer(context);
-        languageServer.start();
+        await languageServer.start();
 
         if (statusBarItem) {
             statusBarItem.text = '$(flame) Flaxon ✓';
@@ -241,19 +240,6 @@ function setupConfigurationListener(context: vscode.ExtensionContext): void {
     const disposable = vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration('flaxon')) {
             logger.info('Flaxon configuration changed');
-            
-            // Update settings
-            const enableRouteExplorer = vscode.workspace
-                .getConfiguration('flaxon')
-                .get('enableRouteExplorer', true);
-            
-            const enableCodeLens = vscode.workspace
-                .getConfiguration('flaxon')
-                .get('enableCodeLens', true);
-            
-            const enableDiagnostics = vscode.workspace
-                .getConfiguration('flaxon')
-                .get('enableDiagnostics', true);
             
             // Refresh providers if needed
             refreshRouteExplorer();
@@ -321,9 +307,6 @@ function openDocumentation(): void {
 /**
  * Command: Restart the language server.
  */
-/**
- * Command: Restart the language server.
- */
 async function restartLanguageServer(context: vscode.ExtensionContext): Promise<void> {
     try {
         logger.info('Restarting language server...');
@@ -337,7 +320,6 @@ async function restartLanguageServer(context: vscode.ExtensionContext): Promise<
                 statusBarItem.tooltip = 'Flaxon Language Server: Running';
             }
         } else {
-            // ✅ Now 'context' is accessible here
             languageServer = new LanguageServer(context);
             await languageServer.start();
             vscode.window.showInformationMessage('Flaxon Language Server started');
@@ -356,13 +338,13 @@ async function restartLanguageServer(context: vscode.ExtensionContext): Promise<
 /**
  * Called when the extension is deactivated.
  */
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
     logger.info('🛑 Flaxon extension deactivating...');
 
     // Stop language server
     if (languageServer) {
         try {
-            languageServer.stop();
+            await languageServer.stop();
             logger.info('Language server stopped');
         } catch (error) {
             logger.error(`Failed to stop language server: ${error}`);

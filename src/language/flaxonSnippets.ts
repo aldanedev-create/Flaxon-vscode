@@ -177,7 +177,7 @@ export const snippets = {
 /**
  * Register snippets with VS Code.
  */
-export function registerSnippets(): void {
+export function registerSnippets(context: vscode.ExtensionContext): void {
     // Snippets are loaded from snippets/flaxon.json
     // This is a fallback for runtime registration
     
@@ -185,10 +185,9 @@ export function registerSnippets(): void {
     const disposable = vscode.languages.registerCompletionItemProvider(
         { language: 'python', scheme: 'file' },
         snippetProvider,
-        '.'
+        '.', '_', ...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
     );
-    
-    vscode.Disposable.from(disposable);
+    context.subscriptions.push(disposable);
 }
 
 /**
@@ -200,14 +199,26 @@ class FlaxonSnippetProvider implements vscode.CompletionItemProvider {
         position: vscode.Position
     ): vscode.CompletionItem[] | Thenable<vscode.CompletionItem[]> {
         const items: vscode.CompletionItem[] = [];
+        const linePrefix = document.lineAt(position.line).text.slice(0, position.character);
+        const currentWord = linePrefix.match(/[A-Za-z_][A-Za-z0-9_-]*$/)?.[0] || '';
         
         for (const [key, snippet] of Object.entries(snippets)) {
+            const matchesPrefix = snippet.prefix.some(prefix =>
+                !currentWord || prefix.toLowerCase().startsWith(currentWord.toLowerCase())
+            );
+            if (!matchesPrefix) {
+                continue;
+            }
             const item = new vscode.CompletionItem(
                 snippet.prefix[0],
                 vscode.CompletionItemKind.Snippet
             );
             item.detail = snippet.description;
             item.insertText = new vscode.SnippetString(snippet.body.join('\n'));
+            item.range = document.getWordRangeAtPosition(
+                position,
+                /[A-Za-z_][A-Za-z0-9_-]*/
+            ) || new vscode.Range(position, position);
             item.sortText = `0${key}`;
             items.push(item);
         }
