@@ -41,6 +41,77 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger.setOutputChannel(outputChannel);
     logger.info('🚀 Flaxon extension activating...');
 
+   const isFlaxonProject = await compatibilityCheck();
+
+    // Helper function to check dependency files
+    async function compatibilityCheck(): Promise<boolean> {
+        // --- Option 2: Check requirements.txt ---
+        const reqFiles = await vscode.workspace.findFiles('**/requirements.txt', '**/{.venv,venv,__pycache__,node_modules}/**');
+        for (const file of reqFiles) {
+            try {
+                const data = await vscode.workspace.fs.readFile(file);
+                const text = Buffer.from(data).toString().toLowerCase();
+                if (text.includes('flaxon')) {
+                    logger.info(`Detected Flaxon in ${file.fsPath}`);
+                    return true;
+                }
+            }  
+                catch (error) {
+                logger.debug(`Unable to read ${file.fsPath}: ${error}`);
+            }
+        }
+
+        // --- Option 3: Check pyproject.toml ---
+        const pyprojectFiles = await vscode.workspace.findFiles('**/pyproject.toml', '**/{.venv,venv,__pycache__,node_modules}/**');
+        for (const file of pyprojectFiles) {
+            try {
+                const data = await vscode.workspace.fs.readFile(file);
+                const text = Buffer.from(data).toString().toLowerCase();
+                if (text.includes('flaxon')) {
+                    logger.info(`Detected Flaxon in ${file.fsPath}`);
+                    return true;
+                }
+            } 
+            catch (error) {
+                logger.debug(`Unable to read ${file.fsPath}: ${error}`);
+            }
+        }
+
+        // --- Option 1: Detect Flaxon imports in Python files as a fallback ---
+              const pyFiles = await vscode.workspace.findFiles(
+               '**/*.py',
+               '**/{.venv,venv,__pycache__,node_modules}/**',
+               100
+                );        
+
+                for (const file of pyFiles) {
+            try {
+                const data = await vscode.workspace.fs.readFile(file);
+                const text = Buffer.from(data).toString();
+                if (text.includes('from flaxon import') || text.includes('import flaxon')) {
+                    logger.info(`Detected Flaxon import in ${file.fsPath}`);
+                    return true;
+                }
+            } 
+            
+                catch (error) {
+                logger.debug(`Unable to read ${file.fsPath}: ${error}`);
+            }
+        }
+
+        return false;
+    }
+
+    // Await the check
+    if (!isFlaxonProject) {
+        logger.info(
+            "❌ No Flaxon configuration or imports detected. Extension staying idle."
+        );
+        return;
+    }
+
+    logger.info('✅ Flaxon project detected! Activating extension features...');
+
     // 2. Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(
         vscode.StatusBarAlignment.Right,
